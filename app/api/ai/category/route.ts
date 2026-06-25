@@ -1,0 +1,3 @@
+import OpenAI from "openai";
+const openai=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
+export async function POST(req:Request){try{const{keyword}=await req.json();if(!keyword)return Response.json({error:"Keyword is required."},{status:400});const response=await openai.responses.create({model:"gpt-4.1-mini",input:`Suggest a travel category for this keyword: ${keyword}. Return ONLY JSON with keys name, icon, description. The icon must be one emoji.`});const text=response.output_text.trim().replace(/^```json|```$/g,"");return Response.json(JSON.parse(text))}catch(error){console.error(error);return Response.json({name:"Custom Trip",icon:"✨",description:"A personalized trip category based on your idea."})}}
