@@ -3,66 +3,72 @@
 import { useEffect, useState } from "react";
 import type { Trip } from "@/lib/types";
 
-export default function TripPage({ params }: { params: { id: string } }) {
+export default function TripPage() {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [tab, setTab] = useState("Overview");
 
   useEffect(() => {
     async function loadTrip() {
-      const trips = JSON.parse(localStorage.getItem("packsy_trips") || "[]");
-      const localTrip = trips.find((t: Trip) => t.id === params.id);
+      const tripId = window.location.pathname.split("/").pop();
+
+      // Try localStorage first
+      const trips: Trip[] = JSON.parse(
+        localStorage.getItem("packsy_trips") || "[]"
+      );
+
+      const localTrip = trips.find((t) => t.id === tripId);
 
       if (localTrip) {
         setTrip(localTrip);
         return;
       }
 
-      const { supabase } = await import("@/lib/supabaseClient");
-      const { data: userData } = await supabase.auth.getUser();
+      // Otherwise load from Supabase API
+      const res = await fetch(`/api/trips/${tripId}`);
 
-      if (!userData.user) {
+      if (!res.ok) {
         setTrip(null);
         return;
       }
 
-      const { data } = await supabase
-        .from("trips")
-        .select("trip_data")
-        .eq("user_id", userData.user.id);
-
-      const cloudTrip = data
-        ?.map((row: any) => row.trip_data)
-        .find((t: Trip) => t.id === params.id);
-
-      setTrip(cloudTrip || null);
+      const data = await res.json();
+      setTrip(data.trip);
     }
 
     loadTrip();
-  }, [params.id]);
+  }, []);
 
   function toggle(catId: string, itemId: string) {
     if (!trip) return;
 
     const updated = {
       ...trip,
-      categories: trip.categories.map((category) =>
-        category.id === catId
+      categories: trip.categories.map((c) =>
+        c.id === catId
           ? {
-              ...category,
-              items: category.items.map((item) =>
-                item.id === itemId ? { ...item, packed: !item.packed } : item
+              ...c,
+              items: c.items.map((i) =>
+                i.id === itemId
+                  ? { ...i, packed: !i.packed }
+                  : i
               ),
             }
-          : category
+          : c
       ),
     };
 
     setTrip(updated);
 
-    const trips = JSON.parse(localStorage.getItem("packsy_trips") || "[]");
-    const nextTrips = trips.map((t: Trip) => (t.id === updated.id ? updated : t));
+    const trips: Trip[] = JSON.parse(
+      localStorage.getItem("packsy_trips") || "[]"
+    );
 
-    localStorage.setItem("packsy_trips", JSON.stringify(nextTrips));
+    localStorage.setItem(
+      "packsy_trips",
+      JSON.stringify(
+        trips.map((t) => (t.id === updated.id ? updated : t))
+      )
+    );
   }
 
   if (!trip) {
@@ -81,24 +87,27 @@ export default function TripPage({ params }: { params: { id: string } }) {
         <div className="heroImage">
           <div>
             <h1 style={{ margin: 0 }}>{trip.destination}</h1>
+
             <p>
               {trip.startDate} – {trip.endDate}
             </p>
+
             <p>
-              {trip.travelers.length} travelers • {trip.tripType} • {trip.luggage}
+              {trip.travelers.length} travelers • {trip.tripType} •{" "}
+              {trip.luggage}
             </p>
           </div>
         </div>
 
         <div className="screen">
           <div className="chips">
-            {["Overview", "List", "Details"].map((item) => (
+            {["Overview", "List", "Details"].map((x) => (
               <button
-                key={item}
-                className={`chip ${tab === item ? "active" : ""}`}
-                onClick={() => setTab(item)}
+                key={x}
+                className={`chip ${tab === x ? "active" : ""}`}
+                onClick={() => setTab(x)}
               >
-                {item}
+                {x}
               </button>
             ))}
           </div>
@@ -112,12 +121,13 @@ export default function TripPage({ params }: { params: { id: string } }) {
 
               <h3>Your Packing List</h3>
 
-              {trip.categories.map((category) => (
-                <div className="listRow" key={category.id}>
+              {trip.categories.map((c) => (
+                <div className="listRow" key={c.id}>
                   <span>
-                    {category.icon} {category.name}
+                    {c.icon} {c.name}
                   </span>
-                  <span>{category.items.length} items ›</span>
+
+                  <span>{c.items.length} items ›</span>
                 </div>
               ))}
             </>
@@ -127,21 +137,24 @@ export default function TripPage({ params }: { params: { id: string } }) {
             <>
               <h2>Packing List</h2>
 
-              {trip.categories.map((category) => (
-                <div className="card" key={category.id}>
+              {trip.categories.map((c) => (
+                <div className="card" key={c.id}>
                   <h3>
-                    {category.icon} {category.name}
+                    {c.icon} {c.name}
                   </h3>
 
-                  {category.items.map((item) => (
-                    <div className="checkRow" key={item.id}>
+                  {c.items.map((i) => (
+                    <div className="checkRow" key={i.id}>
                       <input
                         type="checkbox"
-                        checked={item.packed}
-                        onChange={() => toggle(category.id, item.id)}
+                        checked={i.packed}
+                        onChange={() => toggle(c.id, i.id)}
                       />
-                      <span>{item.name}</span>
-                      <span>{item.quantity}</span>
+
+                      <span>{i.name}</span>
+
+                      <span>{i.quantity}</span>
+
                       <span>›</span>
                     </div>
                   ))}
@@ -156,17 +169,25 @@ export default function TripPage({ params }: { params: { id: string } }) {
 
               <div className="insight">
                 <b>✨ AI Insights</b>
+
                 <p>{trip.insights}</p>
-                <button className="secondary">Regenerate Insights</button>
+
+                <button className="secondary">
+                  Regenerate Insights
+                </button>
               </div>
 
               <div className="card">
                 <p>📍 Destination: {trip.destination}</p>
+
                 <p>
                   📅 Dates: {trip.startDate} – {trip.endDate}
                 </p>
+
                 <p>👥 Travelers: {trip.travelers.length}</p>
+
                 <p>🏷️ Trip Type: {trip.tripType}</p>
+
                 <p>🧳 Luggage: {trip.luggage}</p>
               </div>
             </>
@@ -179,21 +200,25 @@ export default function TripPage({ params }: { params: { id: string } }) {
             <br />
             Overview
           </div>
+
           <div className="navItem">
             ✅
             <br />
             List
           </div>
+
           <div className="navItem">
             📅
             <br />
             Calendar
           </div>
+
           <div className="navItem">
             📝
             <br />
             Notes
           </div>
+
           <div className="navItem">
             ⋯
             <br />
